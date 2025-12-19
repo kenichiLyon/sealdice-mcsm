@@ -28,4 +28,3 @@ func main() {
 	log.Printf("listening on %s", cfg.Addr)
 	log.Fatal(http.ListenAndServe(cfg.Addr, nil))
 }
-

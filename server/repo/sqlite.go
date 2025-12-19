@@ -71,4 +71,3 @@ func (r *SQLiteRepo) GetAllBindings() (map[string]string, error) {
 func (r *SQLiteRepo) Close() error {
 	return r.db.Close()
 }
-

@@ -1,10 +1,10 @@
 {
-  "name": "a-long-story",
-  "version": "1.0.0",
-  "description": "once upon a time, ...",
+  "name": "mcsm-remote",
+  "version": "0.1.0",
+  "description": "Sealdice-core 扩展，通过 WS 远程控制 MCSM 中的 sealdice 实例",
   "main": "build/index.js",
   "typings": "build/index.d.ts",
-  "repository": "https://github.com/sealdice/seal-swordworld",
+  "repository": "",
   "license": "Apache-2.0",
   "keywords": [],
   "scripts": {
@@ -14,11 +14,8 @@
   "engines": {
     "node": ">=10"
   },
-  "dependencies": {
-    "lodash-es": "^4.17.21"
-  },
+  "dependencies": {},
   "devDependencies": {
-    "@types/lodash-es": "^4.17.12",
     "cross-env": "^7.0.3",
     "esbuild": "^0.21.4",
     "fs-extra": "^11.2.0",

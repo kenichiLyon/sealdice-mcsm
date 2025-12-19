@@ -16,10 +16,10 @@ type Sender interface {
 }
 
 type Application struct {
-	cfg     *config.Config
-	repo    repo.BindingRepo
-	mcsm    *infra.Client
-	fs      infra.FileAPI
+	cfg  *config.Config
+	repo repo.BindingRepo
+	mcsm *infra.Client
+	fs   infra.FileAPI
 
 	mu   sync.Mutex
 	fsms map[string]*ReloginFSM

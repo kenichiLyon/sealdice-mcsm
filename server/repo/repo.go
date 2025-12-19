@@ -6,4 +6,3 @@ type BindingRepo interface {
 	GetAllBindings() (map[string]string, error)
 	Close() error
 }
-

@@ -10,11 +10,11 @@ import (
 )
 
 type ReloginFSM struct {
-	cfg     *config.Config
-	alias   string
-	client  *infra.Client
-	fs      infra.FileAPI
-	sender  Sender
+	cfg    *config.Config
+	alias  string
+	client *infra.Client
+	fs     infra.FileAPI
+	sender Sender
 
 	restartAt time.Time
 	state     ReloginStatus
@@ -118,4 +118,3 @@ func (f *ReloginFSM) Cancel() {
 	default:
 	}
 }
-
