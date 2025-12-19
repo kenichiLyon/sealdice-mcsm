@@ -13,15 +13,3 @@ main:
             username: "$GIT_USERNAME" # 如果使用 HTTPS
             password: "$GIT_PASSWORD" # 如果使用 HTTPS
             force: true # 强制推送
-            
-  "crontab: 0 1 * * *": # 每天1点执行
-    - name: sync from github
-      stages:
-        - name: sync from github
-          image: tencentcom/git-sync
-          settings:
-            target_url: https://github.com/kenichiLyon/sealdice-mcsm.git
-            auth_type: https
-            username: $GIT_USERNAME
-            password: $GIT_ACCESS_TOKEN
-            sync_mode: pull
