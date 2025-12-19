@@ -4,9 +4,9 @@ import (
 	"context"
 	"sync"
 
-	"sealdice-mcsm/server/infra"
-	"sealdice-mcsm/server/repo"
-	"sealdice-mcsm/server/ws"
+	"sealdice-mcsm/infra"
+	"sealdice-mcsm/repo"
+	"sealdice-mcsm/ws"
 )
 
 // Application implements the application logic.

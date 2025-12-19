@@ -6,19 +6,19 @@ import (
 	"log"
 	"time"
 
-	"sealdice-mcsm/server/ws"
+	"sealdice-mcsm/ws"
 )
 
 // FSMState represents the state of the Relogin FSM.
 type FSMState int
 
 const (
-	StateIdle              FSMState = iota
-	StateRestartingProtocol         // Restarting the protocol adapter (e.g., Lagrange)
-	StateWaitingForQRCode           // Waiting for the QR code image to appear
-	StateSendingQRCode              // Sending QR code to client (transient state usually)
-	StateWaitingForAuth             // Waiting for user confirmation (.continue)
-	StateRestartingSealdice         // Restarting the main Sealdice instance
+	StateIdle               FSMState = iota
+	StateRestartingProtocol          // Restarting the protocol adapter (e.g., Lagrange)
+	StateWaitingForQRCode            // Waiting for the QR code image to appear
+	StateSendingQRCode               // Sending QR code to client (transient state usually)
+	StateWaitingForAuth              // Waiting for user confirmation (.continue)
+	StateRestartingSealdice          // Restarting the main Sealdice instance
 )
 
 func (s FSMState) String() string {
@@ -144,7 +144,7 @@ func (app *Application) runReloginFSM(ctx context.Context, protocolID, sealdiceI
 			})
 		}
 	}
-	
+
 	sendInfo := func(msg string) {
 		app.fsmMu.Lock()
 		sender := app.fsmSender
@@ -172,8 +172,8 @@ func (app *Application) runReloginFSM(ctx context.Context, protocolID, sealdiceI
 	sendInfo("Protocol restarting, waiting for QR code...")
 
 	// Step 2: Poll for QR Code
-	qrPath := "qrcode.png" 
-	
+	qrPath := "qrcode.png"
+
 	// Polling loop
 	qrFound := false
 	var qrContent string

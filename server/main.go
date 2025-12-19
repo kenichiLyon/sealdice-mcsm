@@ -4,12 +4,11 @@ import (
 	"log"
 	"net/http"
 
-	"sealdice-mcsm/server/app"
-	"sealdice-mcsm/server/config"
-
-	"sealdice-mcsm/server/infra"
-	"sealdice-mcsm/server/repo"
-	"sealdice-mcsm/server/ws"
+	"sealdice-mcsm/app"
+	"sealdice-mcsm/config"
+	"sealdice-mcsm/infra"
+	"sealdice-mcsm/repo"
+	"sealdice-mcsm/ws"
 )
 
 func main() {
