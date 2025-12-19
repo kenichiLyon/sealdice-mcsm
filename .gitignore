@@ -4,24 +4,26 @@
 *.so
 *.dylib
 
-# Database
-*.db
-*.sqlite
-*.sqlite3
-
 # Logs
 *.log
 
-# Environment
+# Database
+*.db
+*.sqlite
+
+# Go
+vendor/
+go.work
+
+# Node
+node_modules/
+dist/
+
+# Env
 .env
 .venv/
-venv/
-bin/
-
-# OS
-.DS_Store
-Thumbs.db
+__pycache__/
 
 # IDE
-.idea/
 .vscode/
+.idea/
