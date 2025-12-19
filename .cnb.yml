@@ -10,6 +10,6 @@ main:
           settings:
             target_url: https://github.com/kenichiLyon/sealdice-mcsm.git
             auth_type: https
-            username: "${GIT_USERNAME}" # 如果使用 HTTPS
-            password: "${GIT_PASSWORD}" # 如果使用 HTTPS
+            username: "$GIT_USERNAME" # 如果使用 HTTPS
+            password: "$GIT_PASSWORD" # 如果使用 HTTPS
             force: true # 强制推送
