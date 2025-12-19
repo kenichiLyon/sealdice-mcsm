@@ -1,11 +1,15 @@
+# 在 .cnb.yml 上使用的示例配置文件
 main:
   push:
     - stages:
-        - name: sync to github with rebase
+        - name: sync to github
+          # 建议使用密钥仓库来存储密 GIT_USERNAME、GIT_PASSWORD 等敏感信息，然后使用 imports 引用变量，提高安全性
+          # imports 使用文档：https://docs.cnb.cool/zh/grammar/pipeline.html#imports
+          imports: https://cnb.cool/kic-for-own/github-secr/-/blob/main/env.yml
           image: tencentcom/git-sync
           settings:
-            target_url: https://github.com/kenichiLyon/mcsm.git
+            target_url: https://github.com/kenichiLyon/sealdice-mcsm.git
             auth_type: https
-            username: ${GIT_USERNAME}
-            password: ${GIT_ACCESS_TOKEN}
-            sync_mode: rebase
+            username: "${GIT_USERNAME}" # 如果使用 HTTPS
+            password: "${GIT_PASSWORD}" # 如果使用 HTTPS
+            force: true # 强制推送
