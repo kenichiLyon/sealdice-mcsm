@@ -1,0 +1,11 @@
+main:
+  push:
+    - stages:
+        - name: sync to github with rebase
+          image: tencentcom/git-sync
+          settings:
+            target_url: https://github.com/kenichiLyon/mcsm.git
+            auth_type: https
+            username: ${GIT_USERNAME}
+            password: ${GIT_ACCESS_TOKEN}
+            sync_mode: rebase
