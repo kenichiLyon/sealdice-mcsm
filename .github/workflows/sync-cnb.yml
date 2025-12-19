@@ -1,0 +1,21 @@
+name: Sync from CNB
+on:
+  schedule:
+    - cron: "0 1 * * *" # 每天1点执行
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+      
+      - name: Sync from CNB Repository
+        uses: docker://tencentcom/git-sync
+        env:
+          PLUGIN_TARGET_URL: "https://cnb.cool/kic-for-own/kenichiLyon/sealdice-mcsm.git"
+          PLUGIN_AUTH_TYPE: "https"
+          PLUGIN_USERNAME: "cnb"
+          PLUGIN_PASSWORD: ${{ secrets.GIT_PASSWORD }}
+          PLUGIN_SYNC_MODE: "pull"
