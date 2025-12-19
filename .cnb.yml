@@ -2,7 +2,7 @@
 main:
   push:
     - stages:
-        - name: sync to github
+        - name: sync to github #向github推代码
           # 建议使用密钥仓库来存储密 GIT_USERNAME、GIT_PASSWORD 等敏感信息，然后使用 imports 引用变量，提高安全性
           # imports 使用文档：https://docs.cnb.cool/zh/grammar/pipeline.html#imports
           imports: https://cnb.cool/kic-for-own/github-secr/-/blob/main/env.yml
