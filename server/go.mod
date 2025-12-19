@@ -1,36 +1,30 @@
-module sealdice-mcsm
+module sealdice-mcsm/server
 
-go 1.25.3
+go 1.21
 
 require (
-	github.com/Masterminds/semver/v3 v3.4.0
-	github.com/dop251/goja v0.0.0-20251201205617-2bb4c724c0f9
-	github.com/dop251/goja_nodejs v0.0.0-20251015164255-5e94316bedaf
-	github.com/evanw/esbuild v0.27.2
-	github.com/fy0/gojax v0.0.0-20221225152702-4140cf8509bd
-	github.com/golang-module/carbon v1.7.3
-	github.com/gorilla/websocket v1.5.3
-	github.com/mattn/go-sqlite3 v1.14.32
-	github.com/pkg/errors v0.9.1
-	github.com/robfig/cron/v3 v3.0.1
-	github.com/samber/lo v1.52.0
-	go.uber.org/zap v1.27.1
-	gopkg.in/elazarl/goproxy.v1 v1.0.0-20180725130230-947c36da3153
+	github.com/gorilla/websocket v1.5.1
+	modernc.org/sqlite v1.27.0
 )
 
 require (
-	github.com/dlclark/regexp2 v1.11.4 // indirect
-	github.com/elazarl/goproxy v1.7.2 // indirect
-	github.com/elazarl/goproxy/ext v0.0.0-20251122212328-fad3713f1715 // indirect
-	github.com/go-sourcemap/sourcemap v2.1.4+incompatible // indirect
-	github.com/gobuffalo/envy v1.7.0 // indirect
-	github.com/gobuffalo/packd v0.3.0 // indirect
-	github.com/gobuffalo/packr v1.30.1 // indirect
-	github.com/google/pprof v0.0.0-20240727154555-813a5fbdbec8 // indirect
-	github.com/joho/godotenv v1.3.0 // indirect
-	github.com/rogpeppe/go-internal v1.3.0 // indirect
-	github.com/stretchr/testify v1.10.0 // indirect
-	go.uber.org/multierr v1.10.0 // indirect
-	golang.org/x/sys v0.6.0 // indirect
-	golang.org/x/text v0.22.0 // indirect
+	github.com/dustin/go-humanize v1.0.1 // indirect
+	github.com/google/uuid v1.3.0 // indirect
+	github.com/kballard/go-shellquote v0.0.0-20180428030007-95032a82bc51 // indirect
+	github.com/mattn/go-isatty v0.0.16 // indirect
+	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect
+	golang.org/x/mod v0.3.0 // indirect
+	golang.org/x/net v0.17.0 // indirect
+	golang.org/x/sys v0.13.0 // indirect
+	golang.org/x/tools v0.0.0-20201124115921-2c860bdd6e78 // indirect
+	golang.org/x/xerrors v0.0.0-20200804184101-5ec99f83aff1 // indirect
+	lukechampine.com/uint128 v1.2.0 // indirect
+	modernc.org/cc/v3 v3.40.0 // indirect
+	modernc.org/ccgo/v3 v3.16.13 // indirect
+	modernc.org/libc v1.29.0 // indirect
+	modernc.org/mathutil v1.6.0 // indirect
+	modernc.org/memory v1.7.2 // indirect
+	modernc.org/opt v0.1.3 // indirect
+	modernc.org/strutil v1.1.3 // indirect
+	modernc.org/token v1.0.1 // indirect
 )

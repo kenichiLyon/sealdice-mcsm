@@ -1,143 +1,132 @@
 package ws
 
 import (
-	"log"
+	"context"
+	"encoding/json"
 	"net/http"
 
 	"github.com/gorilla/websocket"
+	"sealdice-mcsm/server/app"
 )
 
-// AppInterface defines the methods required from the Application layer.
-// This helps to decouple ws package from app package, avoiding cyclic dependencies if any.
-// But since ws imports app structs in original code (indirectly), we can import app interface.
-// Ideally, `app` should import `ws` for `MessageSender`, so `ws` should NOT import `app`.
-// The user structure has `ws` and `app`.
-// `app` imports `ws` (for MessageSender).
-// So `ws` CANNOT import `app` directly without interface or cyclic dependency.
-// We define an interface here for the App logic we need.
-
-type Application interface {
-	Bind(alias, instanceID string) error
-	Control(target, action string) error
-	Status(target string) (interface{}, error)
-	Relogin(sender MessageSender, params map[string]interface{}) error
-	ContinueRelogin() error
-	CancelRelogin() error
+type App interface {
+	Bind(ctx context.Context, alias, instanceID string) error
+	Control(ctx context.Context, target string, action app.ControlAction) error
+	Status(ctx context.Context, target string) (any, error)
+	Relogin(ctx context.Context, sender app.Sender, requestID string, alias string) error
+	ContinueRelogin(ctx context.Context, alias string)
+	CancelRelogin(ctx context.Context, alias string)
 }
 
-// Server manages WebSocket connections.
+type Sender interface {
+	SendResponse(requestID string, code int, data any)
+	SendEvent(name string, data any)
+}
+
 type Server struct {
-	App      Application
-	Upgrader websocket.Upgrader
+	app App
+	up  websocket.Upgrader
 }
 
-// NewServer creates a new WebSocket server.
-func NewServer(app Application) *Server {
+func NewServer(a App) *Server {
 	return &Server{
-		App: app,
-		Upgrader: websocket.Upgrader{
-			CheckOrigin: func(r *http.Request) bool {
-				return true // Allow all origins for simplicity/plugin access
-			},
+		app: a,
+		up: websocket.Upgrader{
+			ReadBufferSize:  4096,
+			WriteBufferSize: 4096,
+			CheckOrigin:     func(r *http.Request) bool { return true },
 		},
 	}
 }
 
-// ServeHTTP handles the WebSocket handshake and connection.
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	// Auth check
-	if err := ValidateToken(r); err != nil {
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
-		return
-	}
-
-	conn, err := s.Upgrader.Upgrade(w, r, nil)
+	conn, err := s.up.Upgrade(w, r, nil)
 	if err != nil {
-		log.Printf("[WS] Upgrade failed: %v", err)
+		http.Error(w, err.Error(), 500)
 		return
 	}
-
-	log.Printf("[WS] New connection from %s", r.RemoteAddr)
-	
-	sender := &Sender{Conn: conn}
-	s.handleConnection(conn, sender)
+	defer conn.Close()
+	s.handleConn(conn)
 }
 
-func (s *Server) handleConnection(conn *websocket.Conn, sender *Sender) {
-	defer func() {
-		s.App.CancelRelogin() // Cancel any ongoing FSM if connection drops
-		conn.Close()
-	}()
+type sender struct {
+	conn *websocket.Conn
+}
 
+func (s *sender) SendResponse(requestID string, code int, data any) {
+	_ = s.conn.WriteJSON(Response{
+		Type:      "response",
+		RequestID: requestID,
+		Code:      code,
+		Data:      data,
+	})
+}
+
+func (s *sender) SendEvent(name string, data any) {
+	_ = s.conn.WriteJSON(Event{
+		Type:  "event",
+		Event: name,
+		Data:  data,
+	})
+}
+
+func (s *Server) handleConn(conn *websocket.Conn) {
+	sndr := &sender{conn: conn}
 	for {
+		_, b, err := conn.ReadMessage()
+		if err != nil {
+			return
+		}
 		var req Request
-		if err := conn.ReadJSON(&req); err != nil {
-			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
-				log.Printf("[WS] Read error: %v", err)
+		if err := json.Unmarshal(b, &req); err != nil {
+			_ = conn.WriteJSON(Response{Type: "response", Code: 400, Message: "bad request"})
+			continue
+		}
+		ctx := context.Background()
+		switch req.Command {
+		case "bind":
+			alias := req.Params["alias"]
+			instance := req.Params["instance_id"]
+			if err := s.app.Bind(ctx, alias, instance); err != nil {
+				sndr.SendResponse(req.RequestID, 500, map[string]string{"error": err.Error()})
+			} else {
+				sndr.SendResponse(req.RequestID, 200, map[string]string{"status": "ok"})
 			}
-			break
+		case "start", "stop", "restart", "fstop":
+			target := req.Params["target"]
+			action := app.ControlAction(req.Command)
+			if err := s.app.Control(ctx, target, action); err != nil {
+				sndr.SendResponse(req.RequestID, 500, map[string]string{"error": err.Error()})
+			} else {
+				sndr.SendResponse(req.RequestID, 200, map[string]string{"status": "ok"})
+			}
+		case "status":
+			target := req.Params["target"]
+			data, err := s.app.Status(ctx, target)
+			if err != nil {
+				sndr.SendResponse(req.RequestID, 500, map[string]string{"error": err.Error()})
+			} else {
+				sndr.SendResponse(req.RequestID, 200, data)
+			}
+		case "relogin":
+			alias := req.Params["target"]
+			if alias == "" {
+				sndr.SendResponse(req.RequestID, 400, map[string]string{"error": "target required"})
+				continue
+			}
+			if err := s.app.Relogin(ctx, sndr, req.RequestID, alias); err != nil {
+				sndr.SendResponse(req.RequestID, 409, map[string]string{"error": err.Error()})
+			}
+		case "continue":
+			alias := req.Params["target"]
+			s.app.ContinueRelogin(ctx, alias)
+			sndr.SendResponse(req.RequestID, 200, map[string]string{"status": "ok"})
+		case "cancel":
+			alias := req.Params["target"]
+			s.app.CancelRelogin(ctx, alias)
+			sndr.SendResponse(req.RequestID, 200, map[string]string{"status": "ok"})
+		default:
+			sndr.SendResponse(req.RequestID, 400, map[string]string{"error": "unknown command"})
 		}
-		
-		s.dispatchRequest(req, sender)
 	}
-}
-
-func (s *Server) dispatchRequest(req Request, sender *Sender) {
-	var resp Response
-	resp.RequestID = req.RequestID
-
-	var err error
-	var data interface{}
-
-	switch req.Command {
-	case "bind":
-		alias, _ := req.Params["alias"].(string)
-		instanceID, _ := req.Params["instance_id"].(string)
-		if alias == "" || instanceID == "" {
-			err = logAndError("missing alias or instance_id")
-		} else {
-			err = s.App.Bind(alias, instanceID)
-			data = "bound"
-		}
-
-	case "start", "stop", "restart", "fstop":
-		target, _ := req.Params["target"].(string)
-		if target == "" {
-			err = logAndError("missing target")
-		} else {
-			err = s.App.Control(target, req.Command)
-			data = "ok"
-		}
-
-	case "status":
-		target, _ := req.Params["target"].(string)
-		data, err = s.App.Status(target)
-
-	case "relogin":
-		// This triggers async FSM. We return "accepted" immediately.
-		err = s.App.Relogin(sender, req.Params)
-		if err == nil {
-			data = "relogin started"
-		}
-
-	case "continue":
-		// User confirms waiting relogin
-		err = s.App.ContinueRelogin()
-		data = "signal sent"
-
-	default:
-		err = logAndError("unknown command: " + req.Command)
-	}
-
-	if err != nil {
-		resp.Code = -1
-		resp.Message = err.Error()
-	} else {
-		resp.Code = 0
-		resp.Message = "success"
-		resp.Data = data
-	}
-
-	// Send immediate response
-	sender.Send(resp)
 }

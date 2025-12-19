@@ -1,4 +1,4 @@
-var filename = 'sealdice-mcsm.js'
+var filename = 'sealdice-js-ext.js'
 
 module.exports = {
   dev: {
