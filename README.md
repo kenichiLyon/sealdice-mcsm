@@ -2,7 +2,7 @@
 
 Sealdice-MCSM-Bridge 是一个连接 Sealdice 海豹核心与 MCSManager 面板的桥接工具，允许通过海豹指令管理 MCSM 实例。
 
-![CI/CD Pipeline](https://github.com/YOUR_USERNAME/sealdice-mcsm/actions/workflows/ci-cd.yml/badge.svg)
+
 
 ## 项目结构
 
