@@ -3,6 +3,7 @@ name: CI/CD Pipeline
 on:
   push:
     branches: [ "**" ]
+    tags: [ "v*" ]
   workflow_dispatch:
 
 jobs:
@@ -56,6 +57,9 @@ jobs:
             fi
           done
 
+      - name: List Artifacts
+        run: ls -R release/
+
       - name: Upload Server Artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -94,6 +98,9 @@ jobs:
       - name: Build Plugin
         run: pnpm run build
 
+      - name: List Artifacts
+        run: ls -R plugin/dist/
+
       - name: Upload Plugin Artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -130,11 +137,22 @@ jobs:
       - name: Generate Version Number
         id: version
         run: |
-          DATE=$(date +'%Y%m%d')
-          SHA=$(git rev-parse --short HEAD)
-          VERSION="${DATE}-${SHA}"
-          echo "VERSION=${VERSION}" >> $GITHUB_ENV
-          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+          if [[ $GITHUB_REF == refs/tags/* ]]; then
+            # Tagged Release
+            TAG_NAME=${GITHUB_REF#refs/tags/}
+            VERSION=${TAG_NAME#v}
+            echo "IS_PRERELEASE=false" >> $GITHUB_ENV
+            echo "VERSION=${VERSION}" >> $GITHUB_ENV
+            echo "TAG_NAME=${TAG_NAME}" >> $GITHUB_ENV
+          else
+            # Snapshot/Pre-release
+            DATE=$(date +'%Y%m%d')
+            SHA=$(git rev-parse --short HEAD)
+            VERSION="${DATE}-${SHA}"
+            echo "IS_PRERELEASE=true" >> $GITHUB_ENV
+            echo "VERSION=${VERSION}" >> $GITHUB_ENV
+            echo "TAG_NAME=v${VERSION}" >> $GITHUB_ENV
+          fi
 
       - name: Package Artifacts
         run: |
@@ -164,10 +182,10 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v1
         with:
-          tag_name: v${{ env.VERSION }}
-          name: Release v${{ env.VERSION }}
+          tag_name: ${{ env.TAG_NAME }}
+          name: Release ${{ env.TAG_NAME }}
           draft: false
-          prerelease: false
+          prerelease: ${{ env.IS_PRERELEASE }}
           files: packages/*.zip
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
