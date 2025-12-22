@@ -26,10 +26,6 @@ export class MCSMClient {
   }
 
   public registerContext(req_id: string, ctx: seal.MsgContext) {
-    // Assuming ctx has group id info.
-    // In Sealdice JS, ctx.group.id is not directly exposed as string sometimes, but let's try.
-    // Actually, ctx.Group.GroupId or similar.
-    // If not available, we store the whole ctx object to reply.
     this.sessionStore.set(req_id, {
       source_ctx: ctx,
       group_id: ctx.group?.groupId || '',
