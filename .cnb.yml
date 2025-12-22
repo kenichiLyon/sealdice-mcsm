@@ -12,7 +12,7 @@ main:
             password: "$GIT_PASSWORD" # 如果使用 HTTPS
             force: true # 强制推
     - name: auto build
-    - stages:
+    - stages: 
       - name: Auto Create Release
         imports: https://cnb.cool/kic-for-own/github-secr/-/blob/main/env.yml
         script: |
@@ -32,23 +32,7 @@ main:
                 }")
           echo "$RELEASE" | jq -r '.id' > release_id.txt  # 保存Release ID到文件
           echo "创建Release成功，ID：$(cat release_id.txt)"
-          script: |
-            # 调用CNB API创建Release（需替换为你的仓库信息）
-            RELEASE=$(curl --location "${CNB_API_ENDPOINT}/-/releases" \
-                  --header "Authorization: Bearer ${CNB_TOKEN}" \
-                  --header "Content-Type: application/json" \
-                  --header "Accept: application/vnd.cnb.api+json" \
-                  --data "{
-                    \"name\": \"自动发布-${CNB_BRANCH}\",
-                    \"body\": \"自动生成的Release，包含最新代码构建制品\",
-                    \"is_draft\": false,
-                    \"is_prerelease\": false,
-                    \"make_latest\": true,  # 可选：设为true则自动设为最新版本
-                    \"tag_name\": \"${CNB_BRANCH}\",  # 与分支名一致（如main）
-                    \"target_commitish\": \"main\"
-                  }")
-            echo "$RELEASE" | jq -r '.id' > release_id.txt  # 保存Release ID到文件
-            echo "创建Release成功，ID：$(cat release_id.txt)"
+
       - name: server build
         docker:
             image: golang:latest
