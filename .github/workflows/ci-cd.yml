@@ -1,0 +1,164 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [ "**" ]
+  workflow_dispatch:
+
+jobs:
+  # =================================================================================================
+  # Server Build Job
+  # =================================================================================================
+  server-build:
+    name: Build Server
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./server
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.21'
+          cache-dependency-path: server/go.sum
+
+      - name: Install UPX
+        run: sudo apt-get update && sudo apt-get install -y upx
+
+      - name: Build and Compress
+        run: |
+          platforms=("windows/amd64" "linux/amd64" "darwin/amd64")
+          
+          for platform in "${platforms[@]}"
+          do
+            IFS="/" read -r -a split <<< "$platform"
+            GOOS="${split[0]}"
+            GOARCH="${split[1]}"
+            output_name="sealdice-mcsm-bridge"
+            
+            if [ "$GOOS" = "windows" ]; then
+              output_name+=".exe"
+            fi
+            
+            echo "Building for $GOOS/$GOARCH..."
+            mkdir -p release/$GOOS
+            env GOOS=$GOOS GOARCH=$GOARCH go build -ldflags="-s -w" -o release/$GOOS/$output_name ./cmd/server
+            
+            echo "Compressing with UPX..."
+            upx --best --lzma release/$GOOS/$output_name
+          done
+
+      - name: Upload Server Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: server-binaries
+          path: server/release/
+
+  # =================================================================================================
+  # Plugin Build Job
+  # =================================================================================================
+  plugin-build:
+    name: Build Plugin
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./plugin/plugin
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+          cache-dependency-path: plugin/plugin/package-lock.json
+
+      - name: Install Dependencies
+        run: npm install
+
+      - name: Build Plugin
+        run: npm run build
+
+      - name: Upload Plugin Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: plugin-dist
+          path: plugin/plugin/dist/
+
+  # =================================================================================================
+  # Release Job (CD)
+  # =================================================================================================
+  release:
+    name: Create Release
+    needs: [server-build, plugin-build]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    if: success()
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Download Server Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: server-binaries
+          path: server/release/
+
+      - name: Download Plugin Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: plugin-dist
+          path: plugin/dist/
+
+      - name: Generate Version Number
+        id: version
+        run: |
+          DATE=$(date +'%Y%m%d')
+          SHA=$(git rev-parse --short HEAD)
+          VERSION="${DATE}-${SHA}"
+          echo "VERSION=${VERSION}" >> $GITHUB_ENV
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+
+      - name: Package Artifacts
+        run: |
+          mkdir -p packages
+          
+          # Windows Package
+          echo "Packaging Windows..."
+          mkdir -p temp_win
+          cp server/release/windows/* temp_win/
+          cp -r plugin/dist/* temp_win/
+          cd temp_win && zip -r ../packages/windows_package.zip . && cd ..
+          
+          # Linux Package
+          echo "Packaging Linux..."
+          mkdir -p temp_linux
+          cp server/release/linux/* temp_linux/
+          cp -r plugin/dist/* temp_linux/
+          cd temp_linux && zip -r ../packages/linux_package.zip . && cd ..
+          
+          # macOS Package
+          echo "Packaging macOS..."
+          mkdir -p temp_mac
+          cp server/release/darwin/* temp_mac/
+          cp -r plugin/dist/* temp_mac/
+          cd temp_mac && zip -r ../packages/macos_package.zip . && cd ..
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: v${{ env.VERSION }}
+          name: Release v${{ env.VERSION }}
+          draft: false
+          prerelease: false
+          files: packages/*.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
