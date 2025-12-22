@@ -134,11 +134,23 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Download Server Artifacts
+      - name: Download Windows Server Artifact
         uses: actions/download-artifact@v4
         with:
-          name: server-binaries
-          path: server/release/
+          name: server-windows
+          path: server/release/windows/
+
+      - name: Download Linux Server Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: server-linux
+          path: server/release/linux/
+
+      - name: Download macOS Server Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: server-macos
+          path: server/release/darwin/
 
       - name: Download Plugin Artifacts
         uses: actions/download-artifact@v4
