@@ -1,11 +1,13 @@
-import { WSMessage, Request, Response } from './types';
+import { WSMessage, Request, Response, RequestContext, PushEvent } from './types';
 
 export class MCSMClient {
   private ws: WebSocket | null = null;
   private url: string;
   private token: string;
   private pendingRequests = new Map<string, (res: Response) => void>();
+  private sessionStore = new Map<string, RequestContext>();
   private reconnectTimer: any = null;
+  private heartbeatTimer: any = null;
   private isConnected = false;
   private ctx: seal.MsgContext | null = null;
 
@@ -23,6 +25,26 @@ export class MCSMClient {
     }
   }
 
+  public registerContext(req_id: string, ctx: seal.MsgContext) {
+    // Assuming ctx has group id info.
+    // In Sealdice JS, ctx.group.id is not directly exposed as string sometimes, but let's try.
+    // Actually, ctx.Group.GroupId or similar.
+    // If not available, we store the whole ctx object to reply.
+    this.sessionStore.set(req_id, {
+      source_ctx: ctx,
+      group_id: ctx.group?.groupId || '',
+      timestamp: Date.now()
+    });
+
+    // Cleanup old sessions > 10 mins
+    const now = Date.now();
+    for (const [k, v] of this.sessionStore) {
+      if (now - v.timestamp > 600000) {
+        this.sessionStore.delete(k);
+      }
+    }
+  }
+
   public connect(ctx?: seal.MsgContext) {
     if (this.isConnected || this.ws) return;
     if (ctx) this.ctx = ctx;
@@ -33,7 +55,13 @@ export class MCSMClient {
     }
 
     try {
-      this.ws = new (globalThis as any).WebSocket(this.url);
+      // Append token to URL if present
+      let wsUrl = this.url;
+      if (this.token) {
+        const separator = wsUrl.includes('?') ? '&' : '?';
+        wsUrl += `${separator}token=${encodeURIComponent(this.token)}`;
+      }
+      this.ws = new (globalThis as any).WebSocket(wsUrl);
     } catch (e) {
       console.error('WS Creation Failed:', e);
       this.scheduleReconnect();
@@ -47,12 +75,14 @@ export class MCSMClient {
         clearTimeout(this.reconnectTimer);
         this.reconnectTimer = null;
       }
+      this.startHeartbeat();
     };
 
     this.ws.onclose = () => {
       this.isConnected = false;
       this.ws = null;
       console.log('MCSM Bridge Disconnected');
+      this.stopHeartbeat();
       this.scheduleReconnect();
     };
 
@@ -77,6 +107,7 @@ export class MCSMClient {
       this.ws.close();
       this.ws = null;
       this.isConnected = false;
+      this.stopHeartbeat();
     }
   }
 
@@ -88,6 +119,27 @@ export class MCSMClient {
     }, 5000);
   }
 
+  private startHeartbeat() {
+    this.stopHeartbeat();
+    this.heartbeatTimer = setInterval(() => {
+      if (this.ws && this.isConnected) {
+        // Send a ping frame if supported, or text ping
+        // Goja WebSocket might not support 'ping' method directly?
+        // Let's send a custom ping message.
+        try {
+           this.ws.send(JSON.stringify({ type: 'ping' }));
+        } catch(e) {}
+      }
+    }, 30000);
+  }
+
+  private stopHeartbeat() {
+    if (this.heartbeatTimer) {
+      clearInterval(this.heartbeatTimer);
+      this.heartbeatTimer = null;
+    }
+  }
+
   private handleMessage(msg: WSMessage) {
     if (msg.type === 'response') {
       const resp = msg as Response;
@@ -97,41 +149,55 @@ export class MCSMClient {
         cb(resp);
       }
     } else if (msg.type === 'event') {
-      // Handle events (like QR code)
-      this.handleEvent(msg as any);
+      this.handleEvent(msg as PushEvent);
     } else if (msg.type === 'error') {
-      // Global error handling or log
       console.error('Server Error:', msg);
     }
   }
 
-  private handleEvent(msg: { event: string, data: any }) {
-    if (msg.event === 'qrcode_ready' && this.ctx) {
+  private handleEvent(msg: PushEvent) {
+    let ctx = this.ctx; // Default fallback
+    if (msg.req_id) {
+      const session = this.sessionStore.get(msg.req_id);
+      if (session) {
+        ctx = session.source_ctx;
+      }
+    }
+
+    if (!ctx) return;
+
+    if (msg.event === 'qrcode') {
       const data = msg.data;
-      const img = seal.base64ToImage(data.qrcode);
-      seal.replyToSender(this.ctx, seal.newMessage(), `[MCSM] 请扫描二维码登录 (Alias: ${data.alias})\n生成时间: ${data.generated_at}\n${img}`);
+      if (data.url) {
+        seal.replyToSender(ctx, seal.newMessage(), `[MCSM] 请扫描二维码登录 (Alias: ${data.alias})\n[CQ:image,file=${data.url}]`);
+      }
+    } else if (msg.event === 'log') {
+      if (typeof msg.data === 'string') {
+         seal.replyToSender(ctx, seal.newMessage(), `[MCSM Log] ${msg.data}`);
+      }
+    } else if (msg.event === 'success') {
+      seal.replyToSender(ctx, seal.newMessage(), `[MCSM] ${msg.data}`);
+    } else if (msg.event === 'error') {
+      const d = msg.data as any;
+      seal.replyToSender(ctx, seal.newMessage(), `[MCSM Error] ${d.msg || d}`);
     }
   }
 
-  public async send(command: string, params: Record<string, string>): Promise<Response> {
+  public async send(command: string, params: Record<string, string>, ctx?: seal.MsgContext): Promise<Response> {
     if (!this.isConnected || !this.ws) {
       throw new Error('WebSocket未连接');
     }
 
     const req_id = this.uuid();
+
+    // Register context if provided
+    if (ctx) {
+      this.registerContext(req_id, ctx);
+    }
+
     const payload = {
-      action: command, // Note: Server expects "action" or "command"? Previous code sent "command". User protocol says "action".
-      // Let's check server code: ws/server.go reads "Command". 
-      // Protocol description says "action". I should align. 
-      // Server struct Request has `Command string`. 
-      // I will send "command" to match server, but user spec said "action". 
-      // Wait, user spec: "Request: { "action": "string", ... }". 
-      // Server code: `type Request struct { Command string ... }`. 
-      // I should update server or plugin. Since I am refactoring server too, I will use "action" in server to match spec.
-      // For now, I'll send BOTH or check. 
-      // Let's assume I will fix server to use "action".
       action: command,
-      command: command, // Backwards compatibility for now until server is updated
+      command: command,
       req_id,
       params
     };
@@ -139,8 +205,9 @@ export class MCSMClient {
     return new Promise<Response>((resolve, reject) => {
       const timeout = setTimeout(() => {
         this.pendingRequests.delete(req_id);
+        this.sessionStore.delete(req_id); // Clean up session on timeout
         reject(new Error('请求超时'));
-      }, 10000);
+      }, 60000);
 
       this.pendingRequests.set(req_id, (res) => {
         clearTimeout(timeout);

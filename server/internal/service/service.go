@@ -17,16 +17,29 @@ type Service struct {
 	Cfg  *config.Config
 	Repo data.BindingRepo
 	MCSM *mcsm.Client
+
+	InstanceSvc *InstanceService
+	WorkflowSvc *WorkflowService
 }
 
 func NewService(cfg *config.Config, repo data.BindingRepo, mcsm *mcsm.Client) *Service {
 	// Ensure temp directory exists
 	_ = os.MkdirAll("./temp", 0755)
-	return &Service{
+
+	instSvc := NewInstanceService(repo)
+	// Base service for common tasks
+	base := &Service{
 		Cfg:  cfg,
 		Repo: repo,
 		MCSM: mcsm,
 	}
+
+	wfSvc := NewWorkflowService(instSvc, base, mcsm)
+
+	base.InstanceSvc = instSvc
+	base.WorkflowSvc = wfSvc
+
+	return base
 }
 
 func (s *Service) SaveTempFile(data []byte, ext string) (string, error) {
@@ -56,45 +69,6 @@ func (s *Service) SaveTempFile(data []byte, ext string) (string, error) {
 	if len(baseURL) > 0 && baseURL[len(baseURL)-1] == '/' {
 		baseURL = baseURL[:len(baseURL)-1]
 	}
-	
+
 	return fmt.Sprintf("%s/public/%s", baseURL, filename), nil
-}
-
-// Logic for Binding, Control, etc. can be added here
-func (s *Service) Bind(alias, role, instanceID string) error {
-	return s.Repo.SaveBinding(alias, role, instanceID)
-}
-
-func (s *Service) Control(target, role, action string) error {
-	var instanceID string
-	var err error
-	
-	if len(target) > 10 {
-		instanceID = target
-	} else {
-		instanceID, err = s.Repo.GetBinding(target, role)
-		if err != nil {
-			return err
-		}
-	}
-	
-	return s.MCSM.InstanceAction(instanceID, "local", action) // Assuming daemonID "local"
-}
-
-func (s *Service) Status(target, role string) (any, error) {
-	if target == "" {
-		return s.MCSM.Dashboard()
-	}
-	
-	var instanceID string
-	var err error
-	if len(target) > 10 {
-		instanceID = target
-	} else {
-		instanceID, err = s.Repo.GetBinding(target, role)
-		if err != nil {
-			return nil, err
-		}
-	}
-	return s.MCSM.InstanceDetail(instanceID, "local")
 }

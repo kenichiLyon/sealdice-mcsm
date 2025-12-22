@@ -1,13 +1,15 @@
 package api
 
 import (
+	"fmt"
 	"log"
 	"net/http"
 
-	"github.com/gin-gonic/gin"
-	"github.com/gorilla/websocket"
 	"sealdice-mcsm/server/config"
 	"sealdice-mcsm/server/internal/service"
+
+	"github.com/gin-gonic/gin"
+	"github.com/gorilla/websocket"
 )
 
 type Handler struct {
@@ -40,18 +42,27 @@ func (h *Handler) SetupRoutes(r *gin.Engine) {
 	})
 
 	wsGroup := r.Group("/ws")
-	wsGroup.Use(h.AuthMiddleware()) // Assuming WS also needs auth? Or maybe handled in handshake?
-	// Note: Websocket auth usually via query param or protocol header. 
-	// If Middleware checks "Authorization" header, standard JS WebSocket API can't set it easily (except protocol).
-	// For now, let's keep it but user might need to pass token in query if header not supported by client.
-	// But current Plugin client doesn't send headers.
-	// We might need to check query param "token" as fallback.
-	
+	wsGroup.Use(h.AuthMiddleware())
 	wsGroup.GET("", h.HandleWS)
 }
 
 var upgrader = websocket.Upgrader{
 	CheckOrigin: func(r *http.Request) bool { return true },
+}
+
+// WSNotifier adapts *websocket.Conn to Notifier interface
+type WSNotifier struct {
+	Conn  *websocket.Conn
+	ReqID string
+}
+
+func (w *WSNotifier) SendEvent(event string, data any) error {
+	return w.Conn.WriteJSON(gin.H{
+		"type":   "event",
+		"event":  event,
+		"data":   data,
+		"req_id": w.ReqID, // Inject ReqID
+	})
 }
 
 func (h *Handler) HandleWS(c *gin.Context) {
@@ -74,41 +85,130 @@ func (h *Handler) HandleWS(c *gin.Context) {
 	}
 	defer conn.Close()
 
-	// Handle connection (Simple loop for now, similar to original)
+	// Handle connection
 	for {
 		var req struct {
 			Action  string            `json:"action"`
-			Command string            `json:"command"` // compat
+			Command string            `json:"command"`
 			ReqID   string            `json:"req_id"`
 			Params  map[string]string `json:"params"`
 		}
 		if err := conn.ReadJSON(&req); err != nil {
 			break
 		}
-		
+
+		notifier := &WSNotifier{Conn: conn, ReqID: req.ReqID}
+
 		action := req.Action
 		if action == "" {
 			action = req.Command
 		}
 
-		// Dispatch
 		var res any
 		var errOp error
 
 		switch action {
 		case "bind":
-			errOp = h.Svc.Bind(req.Params["alias"], req.Params["role"], req.Params["instance_id"])
+			// Params: alias, protocol_id, core_id
+			errOp = h.Svc.InstanceSvc.Bind(req.Params["alias"], req.Params["protocol_id"], req.Params["core_id"])
 			res = map[string]string{"status": "ok"}
+		case "unbind":
+			errOp = h.Svc.InstanceSvc.Unbind(req.Params["alias"])
+			res = map[string]string{"status": "ok"}
+		case "get_binding":
+			res, errOp = h.Svc.InstanceSvc.GetByAlias(req.Params["alias"])
+
 		case "start", "stop", "restart", "fstop", "kill":
-			errOp = h.Svc.Control(req.Params["target"], req.Params["role"], action)
-			res = map[string]string{"status": "ok"}
+			// Need to resolve alias to instance ID?
+			// Old logic had "role" param.
+			// New logic: If alias provided, which instance?
+			// Requirement says: "Control instances".
+			// If alias is provided, we probably need to know which one (protocol or core).
+			// Or maybe the params include "instance_id" directly?
+			// Let's support both.
+
+			target := req.Params["target"]
+			if target == "" {
+				target = req.Params["alias"]
+			}
+
+			// Simple logic: if target looks like UUID, use it.
+			// If it's an alias, we need 'role' (protocol/core).
+			role := req.Params["role"]
+			instanceID := target
+
+			if len(target) <= 20 { // Likely alias
+				binding, err := h.Svc.InstanceSvc.GetByAlias(target)
+				if err != nil {
+					errOp = err
+				} else {
+					if role == "protocol" {
+						instanceID = binding.ProtocolInstanceID
+					} else if role == "core" {
+						instanceID = binding.CoreInstanceID
+					} else {
+						// Default? or Error?
+						errOp = fmt.Errorf("role required for alias target")
+					}
+				}
+			}
+
+			if errOp == nil {
+				errOp = h.Svc.MCSM.InstanceAction(instanceID, "local", action)
+				res = map[string]string{"status": "ok"}
+			}
+
 		case "status":
-			res, errOp = h.Svc.Status(req.Params["target"], req.Params["role"])
-		// Relogin flow would need FSM here, omitted for brevity as it wasn't explicitly requested in "Skeleton" 
-		// but I should probably add a stub or port it if I want full feature parity.
-		// For skeleton, this is enough.
+			// Similar resolution logic
+			target := req.Params["target"]
+			if target == "" {
+				res, errOp = h.Svc.MCSM.Dashboard()
+			} else {
+				instanceID := target
+				if len(target) <= 20 {
+					binding, err := h.Svc.InstanceSvc.GetByAlias(target)
+					if err != nil {
+						errOp = err
+					} else {
+						role := req.Params["role"]
+						if role == "protocol" {
+							instanceID = binding.ProtocolInstanceID
+						} else {
+							instanceID = binding.CoreInstanceID
+						}
+					}
+				}
+				if errOp == nil {
+					res, errOp = h.Svc.MCSM.InstanceDetail(instanceID, "local")
+				}
+			}
+
+		case "relogin":
+			// Async workflow
+			alias := req.Params["alias"]
+			if alias == "" {
+				alias = req.Params["target"]
+			}
+			go func() {
+				if err := h.Svc.WorkflowSvc.Relogin(alias, notifier); err != nil {
+					notifier.SendEvent("error", map[string]string{
+						"alias": alias,
+						"msg":   err.Error(),
+					})
+				}
+			}()
+			res = map[string]string{"status": "started"}
+
+		case "continue":
+			alias := req.Params["alias"]
+			if alias == "" {
+				alias = req.Params["target"]
+			}
+			errOp = h.Svc.WorkflowSvc.Continue(alias)
+			res = map[string]string{"status": "signal_sent"}
+
 		default:
-			errOp = log.Output(1, "Unknown command: "+action)
+			errOp = fmt.Errorf("unknown command: %s", action)
 		}
 
 		resp := gin.H{
@@ -123,7 +223,7 @@ func (h *Handler) HandleWS(c *gin.Context) {
 		} else {
 			resp["code"] = 200
 		}
-		
+
 		conn.WriteJSON(resp)
 	}
 }

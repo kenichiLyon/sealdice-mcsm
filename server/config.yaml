@@ -1,0 +1,13 @@
+server:
+  port: ":8088"
+
+auth:
+  enable: false
+  token: "your-secret-token"
+
+mcsm:
+  url: "http://localhost:23333"
+  apikey: "your-mcsm-apikey"
+
+app:
+  external_url: "http://localhost:8088"
