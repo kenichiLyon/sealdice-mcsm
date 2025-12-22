@@ -60,11 +60,23 @@ jobs:
       - name: List Artifacts
         run: ls -R release/
 
-      - name: Upload Server Artifacts
+      - name: Upload Windows Server Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: server-binaries
-          path: server/release/
+          name: server-windows
+          path: server/release/windows/
+
+      - name: Upload Linux Server Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: server-linux
+          path: server/release/linux/
+
+      - name: Upload macOS Server Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: server-macos
+          path: server/release/darwin/
 
   # =================================================================================================
   # Plugin Build Job
@@ -99,7 +111,7 @@ jobs:
         run: pnpm run build
 
       - name: List Artifacts
-        run: ls -R plugin/dist/
+        run: ls -R dist/
 
       - name: Upload Plugin Artifacts
         uses: actions/upload-artifact@v4
